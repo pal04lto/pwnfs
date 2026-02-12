@@ -83,12 +83,15 @@ decompress() {
     cd "$ROOTFS_DIR"
     mv ../"$1" .
 
-    if [ "$EXTENSION" = "gzip" ]; then
+    if [ "$EXTENSION" = "gz" ]; then
         gzip -dc "$1" | cpio -idvm
         rm "$1"
     elif [ "$EXTENSION" = "cpio" ]; then
         cpio -idm --quiet < "$1" 2>/dev/null
         echo "[+] unpacked the rootfs" 
+    else
+        echo "[*] unsupported format (sorry)"
+        exit 1
     fi
 
     rm "$1"
