@@ -59,7 +59,7 @@ compress() {
     cd $ROOTFS
 
     if [ $EXTENSION = 'cpio' ]; then
-        find . -print0 | cpio --null -o --format=newc > "$NEW_ROOTFS"
+        find . -print0 | cpio --owner root --null -o --format=newc > "$NEW_ROOTFS"
     fi
 
     mv "$NEW_ROOTFS" ..
