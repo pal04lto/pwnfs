@@ -1,0 +1,120 @@
+#!/bin/sh
+
+PWNFS_EXTENSION="/dev/shm/pwnfs_extension"
+PWNFS_ROOTFSDIR="/dev/shm/pwnfs_rootfs"
+
+print_help() {
+    cat << 'EOF'
+                       __
+                      / _|
+  _ ____      ___ __ | |_ ___
+ | '_ \ \ /\ / / '_ \|  _/ __|
+ | |_) \ V  V /| | | | | \__ \
+ | .__/ \_/\_/ |_| |_|_| |___/
+ | |
+ |_|
+
+Usage: pwnfs [OPTION] [FILE] 
+pwnfs - tiny tool which can be used in the kernel-based CTF tasks in order to decompress or compress rootfs with exploit
+
+List of mandatory options:
+    -d decompress rootfs archive into the new directory
+    -c compile the exploit, place it in the rootfs dir and compress rootfs
+    -h print this help message
+
+Example of usage:
+    pwnfs -d rootfs.cpio - will decompress rootfs into the rootfs directory
+    pwnfs -c exploit.c - will compile exploit, place ELF file in rootfs dir and then compress it to rootfs.cpio
+    
+EOF
+}
+
+create_storage() {
+    # this function is used to create files in /dev/shm which will contain type of rootfs archive
+    # and its name in order to use it between script calls.
+
+    touch $PWNFS_EXTENSION
+    touch $PWNFS_ROOTFSDIR
+
+    echo "[+] created storage files in /dev/shm"
+}
+
+compress() {
+    gcc -o exploit -static $1
+    if [ $? != 0 ]; then
+        echo "issue with compilation"
+        exit 1
+    else
+        echo "[+] compiled the exploit"
+    fi
+
+    ROOTFS=$(cat $PWNFS_ROOTFSDIR)
+    EXTENSION=$(cat $PWNFS_EXTENSION)
+    NEW_ROOTFS="${ROOTFS}.${EXTENSION}"
+
+    echo $NEW_ROOTFS
+
+    mv ./exploit $ROOTFS
+    echo "[+] placed exploit in rootfs dir"
+    cd $ROOTFS
+
+    if [ $EXTENSION = 'cpio' ]; then
+        find . -print0 | cpio --null -o --format=newc > "$NEW_ROOTFS"
+    fi
+
+    mv "$NEW_ROOTFS" ..
+
+    echo "[+] compressed new rootfs with exploit - ${NEW_ROOTFS}"
+
+
+}
+
+decompress() {
+    ROOTFS="$1"
+    EXTENSION="${ROOTFS##*.}"
+    ROOTFS_DIR="${ROOTFS%.*}"
+
+    create_storage
+
+    echo "$EXTENSION" > $PWNFS_EXTENSION
+    echo "$ROOTFS_DIR" > $PWNFS_ROOTFSDIR
+
+    mkdir "$ROOTFS_DIR" 
+    cd "$ROOTFS_DIR"
+    mv ../"$1" .
+
+    if [ "$EXTENSION" = "gzip" ]; then
+        gzip -dc "$1" | cpio -idvm
+        rm "$1"
+    elif [ "$EXTENSION" = "cpio" ]; then
+        cpio -idm --quiet < "$1" 2>/dev/null
+        echo "[+] unpacked the rootfs" 
+    fi
+
+    rm "$1"
+}
+
+parse_args() {
+    if [ "$1" = "-h" ] || [ -z "$1" ] || [ "$1" = "--help" ]; then
+        print_help 
+        exit 0
+    elif [ "$1" = "-d" ]; then
+        if [ -z "$2" ]; then
+            echo "provide name of the file(rootfs or exploit)"
+            exit 1
+        else
+            decompress $2
+        fi
+    elif [ "$1" = "-c" ]; then
+        if [ -z "$2" ]; then
+            echo "provide name of the file(rootfs or exploit)"
+            exit 1
+        else
+            compress $2
+        fi
+    fi
+}
+
+
+parse_args $1 $2
+
